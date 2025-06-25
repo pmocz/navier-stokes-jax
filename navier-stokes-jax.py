@@ -1,4 +1,5 @@
 import jax
+import time
 import jax.numpy as jnp
 import jax.numpy.fft as jfft
 import matplotlib.pyplot as plt
@@ -65,64 +66,27 @@ def curl(vx, vy, vz, kx, ky, kz):
     return wx, wy, wz
 
 
+def get_ke(vx, vy, vz, dV):
+    """Calculate the kinetic energy in the system"""
+    """Kinetic energy = 0.5 * integral |v|^2 dV"""
+    v2 = vx**2 + vy**2 + vz**2
+    ke = 0.5 * jnp.sum(v2) * dV
+    return ke
+
+
 def apply_dealias(f, dealias):
     """apply 2/3 rule dealias to field f"""
     f_hat = dealias * jfft.fftn(f)
     return jnp.real(jfft.ifftn(f_hat))
 
 
-def main():
-    """3D Navier-Stokes Simulation"""
+@jax.jit
+def run_simulation(vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias):
+    """Run the full Navier-Stokes simulation"""
 
-    # Simulation parameters
-    N = 64  # Spatial resolution
-    t = 0.0
-    t_end = 1.0
-    dt = 0.001
-    t_out = 0.01
-    nu = 0.001
-    plot_realtime = True
+    def update(_, state):
+        (vx, vy, vz, t) = state
 
-    # Domain [0,1]^3
-    L = 1.0
-    xlin = jnp.linspace(0, L, num=N + 1)
-    xlin = xlin[0:N]
-    xx, yy, zz = jnp.meshgrid(xlin, xlin, xlin, indexing="ij")
-
-    # Initial Condition (simple vortex)
-    # vx = -jnp.sin(2.0 * jnp.pi * yy) * jnp.sin(2.0 * jnp.pi * zz)
-    # vy = jnp.sin(2.0 * jnp.pi * xx) * jnp.sin(2.0 * jnp.pi * zz)
-    # vz = jnp.sin(2.0 * jnp.pi * xx) * jnp.sin(2.0 * jnp.pi * yy)
-
-    # Initial Condition (vortex)
-    vx = -jnp.sin(2.0 * jnp.pi * yy)
-    vy = jnp.sin(2.0 * jnp.pi * xx * 2)
-    vz = jnp.zeros_like(xx)
-
-    # Fourier Space Variables
-    klin = 2.0 * jnp.pi / L * jnp.arange(-N / 2, N / 2)
-    kmax = jnp.max(klin)
-    kx, ky, kz = jnp.meshgrid(klin, klin, klin, indexing="ij")
-    kx = jnp.fft.ifftshift(kx)
-    ky = jnp.fft.ifftshift(ky)
-    kz = jnp.fft.ifftshift(kz)
-    kSq = kx**2 + ky**2 + kz**2
-    kSq_inv = 1.0 / kSq
-    kSq_inv = kSq_inv.at[kSq == 0].set(1.0)
-
-    # dealias with the 2/3 rule
-    dealias = (
-        (jnp.abs(kx) < (2.0 / 3.0) * kmax)
-        & (jnp.abs(ky) < (2.0 / 3.0) * kmax)
-        & (jnp.abs(kz) < (2.0 / 3.0) * kmax)
-    )
-
-    Nt = int(jnp.ceil(t_end / dt))
-
-    fig = plt.figure(figsize=(5, 4), dpi=80)
-    output_count = 1
-
-    for i in range(Nt):
         # Advection: rhs = -(v.grad)v
         dvx_x, dvx_y, dvx_z = grad(vx, kx, ky, kz)
         dvy_x, dvy_y, dvy_z = grad(vy, kx, ky, kz)
@@ -155,30 +119,84 @@ def main():
         vy = diffusion_solve(vy, dt, nu, kSq)
         vz = diffusion_solve(vz, dt, nu, kSq)
 
-        # vorticity (for plotting)
-        wx, wy, wz = curl(vx, vy, vz, kx, ky, kz)
-
         t += dt
-        print(float(t))
+        return (vx, vy, vz, t)
 
-        # plot in real time (show a 2D slice of wz at z=N//2)
-        plot_this_turn = False
-        if t + dt > output_count * t_out:
-            plot_this_turn = True
-        if (plot_realtime and plot_this_turn) or (i == Nt - 1):
-            plt.cla()
-            plt.imshow(jax.device_get(wz[:, :, N // 2]), cmap="RdBu")
-            plt.clim(-20, 20)
-            ax = plt.gca()
-            ax.invert_yaxis()
-            ax.get_xaxis().set_visible(False)
-            ax.get_yaxis().set_visible(False)
-            ax.set_aspect("equal")
-            plt.pause(0.0001)
-            output_count += 1
+    (vx, vy, vz, t) = jax.lax.fori_loop(0, Nt, update, (vx, vy, vz, t))
 
+    return vx, vy, vz, t
+
+
+def main():
+    """3D Navier-Stokes Simulation"""
+
+    # Simulation parameters
+    N = 64
+    t_end = 1.0
+    dt = 0.001
+    nu = 0.001
+
+    # Domain [0,1]^3
+    L = 1.0
+    xlin = jnp.linspace(0, L, num=N + 1)
+    xlin = xlin[0:N]
+    dx = L / N
+    xx, yy, zz = jnp.meshgrid(xlin, xlin, xlin, indexing="ij")
+
+    # Initial Condition (simple vortex)
+    t = 0.0
+    vx = -jnp.cos(2.0 * jnp.pi * yy) * jnp.cos(2.0 * jnp.pi * zz)
+    vy = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * zz)
+    vz = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * yy)
+    ke = get_ke(vx, vy, vz, dx**3)
+
+    # Fourier Space Variables
+    klin = 2.0 * jnp.pi / L * jnp.arange(-N / 2, N / 2)
+    kmax = jnp.max(klin)
+    kx, ky, kz = jnp.meshgrid(klin, klin, klin, indexing="ij")
+    kx = jnp.fft.ifftshift(kx)
+    ky = jnp.fft.ifftshift(ky)
+    kz = jnp.fft.ifftshift(kz)
+    kSq = kx**2 + ky**2 + kz**2
+    kSq_inv = 1.0 / kSq
+    kSq_inv = kSq_inv.at[kSq == 0].set(1.0)
+
+    # dealias with the 2/3 rule
+    dealias = (
+        (jnp.abs(kx) < (2.0 / 3.0) * kmax)
+        & (jnp.abs(ky) < (2.0 / 3.0) * kmax)
+        & (jnp.abs(kz) < (2.0 / 3.0) * kmax)
+    )
+
+    Nt = int(jnp.ceil(t_end / dt))
+
+    # print initial kinetic energy
+    print(f"Initial kinetic energy: {ke:.6f}")
+
+    # Run the simulation
+    start_time = time.time()
+    vx, vy, vz, t = run_simulation(
+        vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias
+    )
+    jax.block_until_ready(t)
+    end_time = time.time()
+    print(f"Simulation completed in {end_time - start_time:.6f} seconds")
+
+    # print final kinetic energy
+    ke = get_ke(vx, vy, vz, dx**3)
+    print(f"Final kinetic energy: {ke:.6f}")
+
+    # vorticity (for plotting)
+    _, _, wz = curl(vx, vy, vz, kx, ky, kz)
+    plt.cla()
+    plt.imshow(jax.device_get(wz[:, :, N // 2]), cmap="RdBu")
+    plt.clim(-20, 20)
+    ax = plt.gca()
+    ax.invert_yaxis()
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+    ax.set_aspect("equal")
     plt.show()
-    return
 
 
 if __name__ == "__main__":
