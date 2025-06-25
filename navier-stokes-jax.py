@@ -81,8 +81,10 @@ def apply_dealias(f, dealias):
 
 
 @jax.jit
-def run_simulation(vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias):
+def run_simulation(vx, vy, vz, t, dt, Nt, dx, nu, kx, ky, kz, kSq, kSq_inv, dealias):
     """Run the full Navier-Stokes simulation"""
+
+    ke_init = get_ke(vx, vy, vz, dx**3)
 
     def update(_, state):
         (vx, vy, vz, t) = state
@@ -124,23 +126,26 @@ def run_simulation(vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias)
 
     (vx, vy, vz, t) = jax.lax.fori_loop(0, Nt, update, (vx, vy, vz, t))
 
-    return vx, vy, vz, t
+    ke_final = get_ke(vx, vy, vz, dx**3)
+    ke_boost = ke_final / ke_init
+
+    return vx, vy, vz, t, ke_boost
 
 
 def main():
     """3D Navier-Stokes Simulation"""
 
     # Simulation parameters
-    N = 64
+    N = 64  # 32 # 64
     t_end = 1.0
     dt = 0.001
     nu = 0.001
 
     # Domain [0,1]^3
     L = 1.0
+    dx = L / N
     xlin = jnp.linspace(0, L, num=N + 1)
     xlin = xlin[0:N]
-    dx = L / N
     xx, yy, zz = jnp.meshgrid(xlin, xlin, xlin, indexing="ij")
 
     # Initial Condition (simple vortex)
@@ -148,7 +153,6 @@ def main():
     vx = -jnp.cos(2.0 * jnp.pi * yy) * jnp.cos(2.0 * jnp.pi * zz)
     vy = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * zz)
     vz = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * yy)
-    ke = get_ke(vx, vy, vz, dx**3)
 
     # Fourier Space Variables
     klin = 2.0 * jnp.pi / L * jnp.arange(-N / 2, N / 2)
@@ -170,21 +174,16 @@ def main():
 
     Nt = int(jnp.ceil(t_end / dt))
 
-    # print initial kinetic energy
-    print(f"Initial kinetic energy: {ke:.6f}")
-
     # Run the simulation
     start_time = time.time()
-    vx, vy, vz, t = run_simulation(
-        vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias
+    vx, vy, vz, t, ke_boost = run_simulation(
+        vx, vy, vz, t, dt, Nt, dx, nu, kx, ky, kz, kSq, kSq_inv, dealias
     )
     jax.block_until_ready(t)
     end_time = time.time()
     print(f"Simulation completed in {end_time - start_time:.6f} seconds")
 
-    # print final kinetic energy
-    ke = get_ke(vx, vy, vz, dx**3)
-    print(f"Final kinetic energy: {ke:.6f}")
+    print(f"Kinetic energy changes by: {ke_boost:.6f}")
 
     # vorticity (for plotting)
     _, _, wz = curl(vx, vy, vz, kx, ky, kz)
