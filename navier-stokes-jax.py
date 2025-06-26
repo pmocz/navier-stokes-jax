@@ -1,8 +1,10 @@
 import jax
 import time
 import jax.numpy as jnp
+from functools import partial
 import jax.numpy.fft as jfft
 import matplotlib.pyplot as plt
+from jaxopt import ScipyMinimize
 
 jax.config.update("jax_enable_x64", True)
 
@@ -80,11 +82,9 @@ def apply_dealias(f, dealias):
     return jnp.real(jfft.ifftn(f_hat))
 
 
-@jax.jit
-def run_simulation(vx, vy, vz, t, dt, Nt, dx, nu, kx, ky, kz, kSq, kSq_inv, dealias):
+@partial(jax.jit, static_argnames=["dt", "Nt", "nu"])
+def run_simulation(vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias):
     """Run the full Navier-Stokes simulation"""
-
-    ke_init = get_ke(vx, vy, vz, dx**3)
 
     def update(_, state):
         (vx, vy, vz, t) = state
@@ -126,17 +126,57 @@ def run_simulation(vx, vy, vz, t, dt, Nt, dx, nu, kx, ky, kz, kSq, kSq_inv, deal
 
     (vx, vy, vz, t) = jax.lax.fori_loop(0, Nt, update, (vx, vy, vz, t))
 
-    ke_final = get_ke(vx, vy, vz, dx**3)
-    ke_boost = ke_final / ke_init
+    return vx, vy, vz, t
 
-    return vx, vy, vz, t, ke_boost
+
+def maximize_ke_boost(vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, dx):
+    """Optimize the initial velocity field maximize the kinetic energy boost"""
+
+    # @jax.jit
+    def loss_function(theta):
+        vx, vy, vz = theta
+
+        ke_init = get_ke(vx, vy, vz, dx**3)
+
+        vx, vy, vz, _ = run_simulation(
+            vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias
+        )
+
+        ke_final = get_ke(vx, vy, vz, dx**3)
+        ke_boost = ke_final / ke_init
+
+        return -ke_boost
+
+    # Run the optimization
+    opt = ScipyMinimize(
+        method="l-bfgs-b", fun=loss_function, tol=1e-5, options={"disp": True}
+    )
+    sol = opt.run((vx, vy, vz))
+
+    vx = sol.params
+
+    return vx
+
+
+def plot_vorticity(vx, vy, vz, kx, ky, kz, N):
+    """Plot the z-component of vorticity in the mid-plane"""
+    _, _, wz = curl(vx, vy, vz, kx, ky, kz)
+    plt.cla()
+    plt.imshow(jax.device_get(wz[:, :, N // 2]), cmap="RdBu")
+    plt.clim(-20, 20)
+    ax = plt.gca()
+    ax.invert_yaxis()
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+    ax.set_aspect("equal")
+    plt.show()
 
 
 def main():
     """3D Navier-Stokes Simulation"""
 
     # Simulation parameters
-    N = 64  # 32 # 64
+    N = 16  #  64  # 32 # 64
     t_end = 1.0
     dt = 0.001
     nu = 0.001
@@ -147,12 +187,6 @@ def main():
     xlin = jnp.linspace(0, L, num=N + 1)
     xlin = xlin[0:N]
     xx, yy, zz = jnp.meshgrid(xlin, xlin, xlin, indexing="ij")
-
-    # Initial Condition (simple vortex)
-    t = 0.0
-    vx = -jnp.cos(2.0 * jnp.pi * yy) * jnp.cos(2.0 * jnp.pi * zz)
-    vy = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * zz)
-    vz = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * yy)
 
     # Fourier Space Variables
     klin = 2.0 * jnp.pi / L * jnp.arange(-N / 2, N / 2)
@@ -174,28 +208,56 @@ def main():
 
     Nt = int(jnp.ceil(t_end / dt))
 
+    # Initial Condition (simple vortex)
+    t = 0.0
+    vx = -jnp.cos(2.0 * jnp.pi * yy) * jnp.cos(2.0 * jnp.pi * zz)
+    vy = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * zz)
+    vz = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * yy)
+
+    ke_init = get_ke(vx, vy, vz, dx**3)
+
     # Run the simulation
     start_time = time.time()
-    vx, vy, vz, t, ke_boost = run_simulation(
-        vx, vy, vz, t, dt, Nt, dx, nu, kx, ky, kz, kSq, kSq_inv, dealias
+    vx, vy, vz, t = run_simulation(
+        vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias
     )
-    jax.block_until_ready(t)
+    jax.block_until_ready(vx)
+    jax.block_until_ready(vy)
+    jax.block_until_ready(vz)
     end_time = time.time()
     print(f"Simulation completed in {end_time - start_time:.6f} seconds")
 
-    print(f"Kinetic energy changes by: {ke_boost:.6f}")
+    ke_final = get_ke(vx, vy, vz, dx**3)
+    ke_boost = ke_final / ke_init
+    print(f"KE Boost: {ke_boost:.6f}")
 
-    # vorticity (for plotting)
-    _, _, wz = curl(vx, vy, vz, kx, ky, kz)
-    plt.cla()
-    plt.imshow(jax.device_get(wz[:, :, N // 2]), cmap="RdBu")
-    plt.clim(-20, 20)
-    ax = plt.gca()
-    ax.invert_yaxis()
-    ax.get_xaxis().set_visible(False)
-    ax.get_yaxis().set_visible(False)
-    ax.set_aspect("equal")
-    plt.show()
+    plot_vorticity(vx, vy, vz, kx, ky, kz, N)
+
+    # reset initial condition for optimization
+    t = 0.0
+    vx = -jnp.cos(2.0 * jnp.pi * yy) * jnp.cos(2.0 * jnp.pi * zz)
+    vy = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * zz)
+    vz = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * yy)
+
+    start_time = time.time()
+    theta = maximize_ke_boost(
+        vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, dx
+    )
+    jax.block_until_ready(theta)
+    end_time = time.time()
+    print(f"Optimization completed in {end_time - start_time:.6f} seconds")
+
+    # Print optimized kenetic energy boost
+    vx, vy, vz = theta
+    ke_init = get_ke(vx, vy, vz, dx**3)
+    vx, vy, vz, _ = run_simulation(
+        vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias
+    )
+    ke_final = get_ke(vx, vy, vz, dx**3)
+    ke_boost = ke_final / ke_init
+    print(f"KE Boost: {ke_boost:.6f}")
+
+    plot_vorticity(vx, vy, vz, kx, ky, kz, N)
 
 
 if __name__ == "__main__":
