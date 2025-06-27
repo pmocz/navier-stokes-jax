@@ -19,6 +19,7 @@ async_checkpoint_manager = ocp.CheckpointManager(path)
 
 def main():
     all_ke = np.array([])
+    ke_t = np.array([])
     grid_i = 10
     grid_j = 10
 
@@ -30,7 +31,9 @@ def main():
             vx, vy, vz = restored
             N = vz.shape[0]
             ke = 0.5 * (vx**2 + vy**2 + vz**2)
-            print(np.sum(ke))
+            ke_mean = np.mean(ke)
+            ke_t = np.hstack((ke_t, ke_mean))
+            print(ke_mean)
             ke = ke[:, :, N // 2]  # take a slice
             if row_ke.size == 0:
                 row_ke = ke
@@ -41,7 +44,7 @@ def main():
         else:
             all_ke = np.vstack((all_ke, row_ke))
 
-    # imshow all_psi
+    # imshow all_ke
     fig = plt.figure(figsize=(16, 8), dpi=80)
     ax = fig.add_subplot(111)
     plt.imshow(
@@ -55,6 +58,11 @@ def main():
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
     plt.tight_layout()
+    plt.show()
+
+    # plot ke as function of time
+    fig = plt.figure()
+    plt.plot(ke_t)
     plt.show()
 
 

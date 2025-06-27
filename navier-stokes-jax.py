@@ -171,7 +171,7 @@ def print_info():
         jax.debug.print(
             "Iteration: {i}, Value: {v:.2e}, Gradient norm: {e:.2e}",
             i=state.iter_num,
-            v=value,
+            v=-value,
             e=optax.tree_utils.tree_l2_norm(grad),
         )
         return updates, InfoState(iter_num=state.iter_num + 1)
@@ -230,7 +230,7 @@ def maximize_ke_boost(vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias,
         f"Initial value: {loss_function(init_params):.2e} "
         f"Initial gradient norm: {optax.tree_utils.tree_l2_norm(jax.grad(loss_function)(init_params)):.2e}"
     )
-    max_iter = 6  # XXX 100
+    max_iter = 5  # XXX 100
     final_params, _ = run_opt(
         init_params, loss_function, opt, max_iter=max_iter, tol=1e-3
     )
@@ -264,7 +264,7 @@ def main():
     """3D Navier-Stokes Simulation"""
 
     # Simulation parameters
-    N = 16  #  64  # 32 # 64
+    N = 32  #  64  # 32 # 64
     t_end = 1.0
     dt = 0.001
     nu = 0.001
