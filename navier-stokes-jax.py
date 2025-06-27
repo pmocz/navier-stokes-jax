@@ -6,6 +6,8 @@ from functools import partial
 import chex
 from typing import NamedTuple
 import optax
+import os
+import orbax.checkpoint as ocp
 import matplotlib.pyplot as plt
 
 jax.config.update("jax_enable_x64", True)
@@ -84,11 +86,11 @@ def apply_dealias(f, dealias):
 
 
 @partial(jax.jit, static_argnames=["dt", "Nt", "nu"])
-def run_simulation(vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias):
+def run_simulation(vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias):
     """Run the full Navier-Stokes simulation"""
 
     def update(_, state):
-        (vx, vy, vz, t) = state
+        (vx, vy, vz) = state
 
         # Advection: rhs = -(v.grad)v
         dvx_x, dvx_y, dvx_z = grad(vx, kx, ky, kz)
@@ -122,12 +124,36 @@ def run_simulation(vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias)
         vy = diffusion_solve(vy, dt, nu, kSq)
         vz = diffusion_solve(vz, dt, nu, kSq)
 
-        t += dt
-        return (vx, vy, vz, t)
+        return (vx, vy, vz)
 
-    (vx, vy, vz, t) = jax.lax.fori_loop(0, Nt, update, (vx, vy, vz, t))
+    (vx, vy, vz) = jax.lax.fori_loop(0, Nt, update, (vx, vy, vz))
 
-    return vx, vy, vz, t
+    return vx, vy, vz
+
+
+def run_simulation_and_save_checkpoints(
+    vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, folder_name
+):
+    """Run the full Navier-Stokes simulation and save 100 checkpoints"""
+
+    path = ocp.test_utils.erase_and_create_empty(os.getcwd() + "/" + folder_name)
+    async_checkpoint_manager = ocp.CheckpointManager(path)
+
+    num_checkpoints = 100
+    snap_interval = max(1, Nt // num_checkpoints)
+    checkpoint_id = 0
+    for i in range(0, Nt, snap_interval):
+        steps = min(snap_interval, Nt - i)
+        vx, vy, vz = run_simulation(
+            vx, vy, vz, dt, steps, nu, kx, ky, kz, kSq, kSq_inv, dealias
+        )
+        state = vx, vy, vz
+        async_checkpoint_manager.save(checkpoint_id, args=ocp.args.StandardSave(state))
+
+        async_checkpoint_manager.wait_until_finished()
+        checkpoint_id += 1
+
+    return vx, vy, vz
 
 
 class InfoState(NamedTuple):
@@ -143,7 +169,7 @@ def print_info():
         del params, extra_args
 
         jax.debug.print(
-            "Iteration: {i}, Value: {v}, Gradient norm: {e}",
+            "Iteration: {i}, Value: {v:.2e}, Gradient norm: {e:.2e}",
             i=state.iter_num,
             v=value,
             e=optax.tree_utils.tree_l2_norm(grad),
@@ -179,7 +205,7 @@ def run_opt(init_params, fun, opt, max_iter, tol):
     return final_params, final_state
 
 
-def maximize_ke_boost(vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, dx):
+def maximize_ke_boost(vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, dx):
     """Optimize the initial velocity field maximize the kinetic energy boost"""
 
     # @jax.jit
@@ -188,8 +214,8 @@ def maximize_ke_boost(vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, deali
 
         ke_init = get_ke(vx, vy, vz, dx**3)
 
-        vx, vy, vz, _ = run_simulation(
-            vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias
+        vx, vy, vz = run_simulation(
+            vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias
         )
 
         ke_final = get_ke(vx, vy, vz, dx**3)
@@ -216,12 +242,16 @@ def maximize_ke_boost(vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, deali
     return final_params
 
 
-def plot_vorticity(vx, vy, vz, kx, ky, kz, N):
+def make_plot(vx, vy, vz, kx, ky, kz, N, max_plot_val):
     """Plot the z-component of vorticity in the mid-plane"""
     _, _, wz = curl(vx, vy, vz, kx, ky, kz)
+    ke = 0.5 * (vx**2 + vy**2 + vz**2)
     plt.cla()
-    plt.imshow(jax.device_get(wz[:, :, N // 2]), cmap="RdBu")
-    plt.clim(-20, 20)
+    # plt.imshow(jax.device_get(wz[:, :, N // 2]), cmap="RdBu")
+    # plt.clim(-20, 20)
+    ke_slice = jax.device_get(ke[:, :, N // 2])
+    plt.imshow(ke_slice, cmap="RdBu")
+    plt.clim(0, max_plot_val)
     ax = plt.gca()
     ax.invert_yaxis()
     ax.get_xaxis().set_visible(False)
@@ -267,7 +297,6 @@ def main():
     Nt = int(jnp.ceil(t_end / dt))
 
     # Initial Condition (simple vortex)
-    t = 0.0
     vx = -jnp.cos(2.0 * jnp.pi * yy) * jnp.cos(2.0 * jnp.pi * zz)
     vy = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * zz)
     vz = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * yy)
@@ -276,8 +305,8 @@ def main():
 
     # Run the simulation
     start_time = time.time()
-    vx, vy, vz, t = run_simulation(
-        vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias
+    vx, vy, vz = run_simulation_and_save_checkpoints(
+        vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, "checkpoints_demo"
     )
     jax.block_until_ready(vx)
     jax.block_until_ready(vy)
@@ -289,7 +318,7 @@ def main():
     ke_boost = ke_final / ke_init
     print(f"KE Boost: {ke_boost:.6f}")
 
-    plot_vorticity(vx, vy, vz, kx, ky, kz, N)
+    make_plot(vx, vy, vz, kx, ky, kz, N, 1.0)
 
     # reset initial condition for optimization
     t = 0.0
@@ -299,7 +328,7 @@ def main():
 
     start_time = time.time()
     theta = maximize_ke_boost(
-        vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, dx
+        vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, dx
     )
     jax.block_until_ready(theta)
     end_time = time.time()
@@ -308,14 +337,14 @@ def main():
     # Print optimized kenetic energy boost
     vx, vy, vz = theta
     ke_init = get_ke(vx, vy, vz, dx**3)
-    vx, vy, vz, _ = run_simulation(
-        vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias
+    vx, vy, vz = run_simulation_and_save_checkpoints(
+        vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, "checkpoints"
     )
     ke_final = get_ke(vx, vy, vz, dx**3)
     ke_boost = ke_final / ke_init
     print(f"KE Boost: {ke_boost:.6f}")
 
-    plot_vorticity(vx, vy, vz, kx, ky, kz, N)
+    make_plot(vx, vy, vz, kx, ky, kz, N, ke_boost)
 
 
 if __name__ == "__main__":

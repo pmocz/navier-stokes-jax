@@ -1,0 +1,7 @@
+jax[cuda12]
+chex
+optax
+orbax
+orbax-checkpoint
+numpy
+matplotlib
