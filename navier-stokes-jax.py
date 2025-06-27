@@ -1,10 +1,12 @@
 import jax
 import time
 import jax.numpy as jnp
-from functools import partial
 import jax.numpy.fft as jfft
+from functools import partial
+import chex
+from typing import NamedTuple
+import optax
 import matplotlib.pyplot as plt
-from jaxopt import ScipyMinimize
 
 jax.config.update("jax_enable_x64", True)
 
@@ -69,8 +71,7 @@ def curl(vx, vy, vz, kx, ky, kz):
 
 
 def get_ke(vx, vy, vz, dV):
-    """Calculate the kinetic energy in the system"""
-    """Kinetic energy = 0.5 * integral |v|^2 dV"""
+    """Calculate the kinetic energy in the system = 0.5 * integral |v|^2 dV"""
     v2 = vx**2 + vy**2 + vz**2
     ke = 0.5 * jnp.sum(v2) * dV
     return ke
@@ -129,6 +130,55 @@ def run_simulation(vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias)
     return vx, vy, vz, t
 
 
+class InfoState(NamedTuple):
+    iter_num: chex.Numeric
+
+
+def print_info():
+    def init_fn(params):
+        del params
+        return InfoState(iter_num=0)
+
+    def update_fn(updates, state, params, *, value, grad, **extra_args):
+        del params, extra_args
+
+        jax.debug.print(
+            "Iteration: {i}, Value: {v}, Gradient norm: {e}",
+            i=state.iter_num,
+            v=value,
+            e=optax.tree_utils.tree_l2_norm(grad),
+        )
+        return updates, InfoState(iter_num=state.iter_num + 1)
+
+    return optax.GradientTransformationExtraArgs(init_fn, update_fn)
+
+
+def run_opt(init_params, fun, opt, max_iter, tol):
+    value_and_grad_fun = optax.value_and_grad_from_state(fun)
+
+    def step(carry):
+        params, state = carry
+        value, grad = value_and_grad_fun(params, state=state)
+        updates, state = opt.update(
+            grad, state, params, value=value, grad=grad, value_fn=fun
+        )
+        params = optax.apply_updates(params, updates)
+        return params, state
+
+    def continuing_criterion(carry):
+        _, state = carry
+        iter_num = optax.tree_utils.tree_get(state, "count")
+        grad = optax.tree_utils.tree_get(state, "grad")
+        err = optax.tree_utils.tree_l2_norm(grad)
+        return (iter_num == 0) | ((iter_num < max_iter) & (err >= tol))
+
+    init_carry = (init_params, opt.init(init_params))
+    final_params, final_state = jax.lax.while_loop(
+        continuing_criterion, step, init_carry
+    )
+    return final_params, final_state
+
+
 def maximize_ke_boost(vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, dx):
     """Optimize the initial velocity field maximize the kinetic energy boost"""
 
@@ -147,15 +197,23 @@ def maximize_ke_boost(vx, vy, vz, t, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, deali
 
         return -ke_boost
 
-    # Run the optimization
-    opt = ScipyMinimize(
-        method="l-bfgs-b", fun=loss_function, tol=1e-5, options={"disp": True}
+    # opt = optax.lbfgs()
+    opt = optax.chain(print_info(), optax.lbfgs())
+    init_params = (vx, vy, vz)
+    print(
+        f"Initial value: {loss_function(init_params):.2e} "
+        f"Initial gradient norm: {optax.tree_utils.tree_l2_norm(jax.grad(loss_function)(init_params)):.2e}"
     )
-    sol = opt.run((vx, vy, vz))
+    max_iter = 6  # XXX 100
+    final_params, _ = run_opt(
+        init_params, loss_function, opt, max_iter=max_iter, tol=1e-3
+    )
+    print(
+        f"Final value: {loss_function(final_params):.2e}, "
+        f"Final gradient norm: {optax.tree_utils.tree_l2_norm(jax.grad(loss_function)(final_params)):.2e}"
+    )
 
-    vx = sol.params
-
-    return vx
+    return final_params
 
 
 def plot_vorticity(vx, vy, vz, kx, ky, kz, N):
