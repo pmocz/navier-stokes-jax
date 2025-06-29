@@ -21,6 +21,8 @@ with a Spectral method
 v_t + (v.nabla) v = nu * nabla^2 v + nabla P
 div(v) = 0
 
+TODO: MAKE INTIAL VELOCITY DIVERGENCE FREE!!!
+
 """
 
 
@@ -169,7 +171,7 @@ def print_info():
         del params, extra_args
 
         jax.debug.print(
-            "Iteration: {i}, Value: {v:.2e}, Gradient norm: {e:.2e}",
+            "Iteration: {i}, Boost: {v:.2e}, |grad|: {e:.2e}",
             i=state.iter_num,
             v=-value,
             e=optax.tree_utils.tree_l2_norm(grad),
@@ -205,12 +207,19 @@ def run_opt(init_params, fun, opt, max_iter, tol):
     return final_params, final_state
 
 
-def maximize_ke_boost(vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, dx):
+def maximize_ke_boost(Ax, Ay, Az, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, dx):
     """Optimize the initial velocity field maximize the kinetic energy boost"""
 
     # @jax.jit
     def loss_function(theta):
-        vx, vy, vz = theta
+        Ax, Ay, Az = theta
+        Ax -= jnp.mean(Ax)
+        Ay -= jnp.mean(Ay)
+        Az -= jnp.mean(Az)
+        vx, vy, vz = curl(Ax, Ay, Az, kx, ky, kz)
+        vx -= jnp.mean(vx)
+        vy -= jnp.mean(vy)
+        vz -= jnp.mean(vz)
 
         ke_init = get_ke(vx, vy, vz, dx**3)
 
@@ -225,17 +234,17 @@ def maximize_ke_boost(vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias,
 
     # opt = optax.lbfgs()
     opt = optax.chain(print_info(), optax.lbfgs())
-    init_params = (vx, vy, vz)
+    init_params = (Ax, Ay, Az)
     print(
-        f"Initial value: {loss_function(init_params):.2e} "
+        f"Initial value: {-loss_function(init_params):.2e} "
         f"Initial gradient norm: {optax.tree_utils.tree_l2_norm(jax.grad(loss_function)(init_params)):.2e}"
     )
-    max_iter = 5  # XXX 100
+    max_iter = 10  # XXX 100
     final_params, _ = run_opt(
         init_params, loss_function, opt, max_iter=max_iter, tol=1e-3
     )
     print(
-        f"Final value: {loss_function(final_params):.2e}, "
+        f"Final value: {-loss_function(final_params):.2e}, "
         f"Final gradient norm: {optax.tree_utils.tree_l2_norm(jax.grad(loss_function)(final_params)):.2e}"
     )
 
@@ -244,7 +253,7 @@ def maximize_ke_boost(vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias,
 
 def make_plot(vx, vy, vz, kx, ky, kz, N, max_plot_val):
     """Plot the z-component of vorticity in the mid-plane"""
-    _, _, wz = curl(vx, vy, vz, kx, ky, kz)
+    # _, _, wz = curl(vx, vy, vz, kx, ky, kz)
     ke = 0.5 * (vx**2 + vy**2 + vz**2)
     plt.cla()
     # plt.imshow(jax.device_get(wz[:, :, N // 2]), cmap="RdBu")
@@ -264,7 +273,7 @@ def main():
     """3D Navier-Stokes Simulation"""
 
     # Simulation parameters
-    N = 32  #  64  # 32 # 64
+    N = 32  # XXX # 16  64  # 32 # 64
     t_end = 1.0
     dt = 0.001
     nu = 0.001
@@ -296,46 +305,64 @@ def main():
 
     Nt = int(jnp.ceil(t_end / dt))
 
-    # Initial Condition (simple vortex)
-    vx = -jnp.cos(2.0 * jnp.pi * yy) * jnp.cos(2.0 * jnp.pi * zz)
-    vy = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * zz)
-    vz = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * yy)
+    # Initial Condition (simple vortex, divergence free)
+    # vx = -jnp.cos(2.0 * jnp.pi * yy) * jnp.cos(2.0 * jnp.pi * zz)
+    # vy = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * zz)
+    # vz = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * yy)
+    Ax = jnp.cos(2.0 * jnp.pi * xx) * jnp.sin(2.0 * jnp.pi * yy) / (2.0 * jnp.pi)
+    Ay = -jnp.cos(2.0 * jnp.pi * yy) * jnp.sin(2.0 * jnp.pi * zz) / (2.0 * jnp.pi)
+    Az = jnp.cos(2.0 * jnp.pi * zz) * jnp.sin(2.0 * jnp.pi * xx) / (2.0 * jnp.pi)
+    vx, vy, vz = curl(Ax, Ay, Az, kx, ky, kz)
+
+    # check the divergence of the initial condition
+    div_v = div(vx, vy, vz, kx, ky, kz)
+    div_error = jnp.max(jnp.abs(div_v))
+    assert div_error < 1e-8, f"Initial divergence is too large: {div_error:.6e}"
 
     ke_init = get_ke(vx, vy, vz, dx**3)
 
     # Run the simulation
     start_time = time.time()
-    vx, vy, vz = run_simulation_and_save_checkpoints(
+    state = run_simulation_and_save_checkpoints(
         vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, "checkpoints_demo"
     )
-    jax.block_until_ready(vx)
-    jax.block_until_ready(vy)
-    jax.block_until_ready(vz)
+    jax.block_until_ready(state)
     end_time = time.time()
     print(f"Simulation completed in {end_time - start_time:.6f} seconds")
 
+    vx, vy, vz = state
     ke_final = get_ke(vx, vy, vz, dx**3)
     ke_boost = ke_final / ke_init
     print(f"KE Boost: {ke_boost:.6f}")
 
     make_plot(vx, vy, vz, kx, ky, kz, N, 1.0)
 
-    # reset initial condition for optimization
-    t = 0.0
-    vx = -jnp.cos(2.0 * jnp.pi * yy) * jnp.cos(2.0 * jnp.pi * zz)
-    vy = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * zz)
-    vz = jnp.cos(2.0 * jnp.pi * xx) * jnp.cos(2.0 * jnp.pi * yy)
+    # Now, carry out the optimization to maximize kinetic energy boost
+    print("Starting optimization to maximize kinetic energy boost...")
+    # to keep the velocity div-free, we will optimize
+    # the potential field A, where v = curl(A)
+    Ax = jnp.cos(2.0 * jnp.pi * xx) * jnp.sin(2.0 * jnp.pi * yy) / (2.0 * jnp.pi)
+    Ay = -jnp.cos(2.0 * jnp.pi * yy) * jnp.sin(2.0 * jnp.pi * zz) / (2.0 * jnp.pi)
+    Az = jnp.cos(2.0 * jnp.pi * zz) * jnp.sin(2.0 * jnp.pi * xx) / (2.0 * jnp.pi)
 
     start_time = time.time()
     theta = maximize_ke_boost(
-        vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, dx
+        Ax, Ay, Az, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, dx
     )
     jax.block_until_ready(theta)
     end_time = time.time()
     print(f"Optimization completed in {end_time - start_time:.6f} seconds")
 
-    # Print optimized kenetic energy boost
-    vx, vy, vz = theta
+    # Get the optimized velocity field, and re-run the simulation
+    print("Running simulation with optimized initial condition...")
+    Ax, Ay, Az = theta
+    Ax -= jnp.mean(Ax)
+    Ay -= jnp.mean(Ay)
+    Az -= jnp.mean(Az)
+    vx, vy, vz = curl(Ax, Ay, Az, kx, ky, kz)
+    vx -= jnp.mean(vx)
+    vy -= jnp.mean(vy)
+    vz -= jnp.mean(vz)
     ke_init = get_ke(vx, vy, vz, dx**3)
     vx, vy, vz = run_simulation_and_save_checkpoints(
         vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, "checkpoints"
