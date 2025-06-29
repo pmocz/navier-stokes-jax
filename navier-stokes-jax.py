@@ -277,6 +277,7 @@ def main():
     t_end = 1.0
     dt = 0.001
     nu = 0.001
+    plot_flag = False  # True
 
     # Domain [0,1]^3
     L = 1.0
@@ -335,7 +336,8 @@ def main():
     ke_boost = ke_final / ke_init
     print(f"KE Boost: {ke_boost:.6f}")
 
-    make_plot(vx, vy, vz, kx, ky, kz, N, 1.0)
+    if plot_flag:
+        make_plot(vx, vy, vz, kx, ky, kz, N, 1.0)
 
     # Now, carry out the optimization to maximize kinetic energy boost
     print("Starting optimization to maximize kinetic energy boost...")
@@ -371,7 +373,8 @@ def main():
     ke_boost = ke_final / ke_init
     print(f"KE Boost: {ke_boost:.6f}")
 
-    make_plot(vx, vy, vz, kx, ky, kz, N, ke_boost)
+    if plot_flag:
+        make_plot(vx, vy, vz, kx, ky, kz, N, ke_boost)
 
 
 if __name__ == "__main__":

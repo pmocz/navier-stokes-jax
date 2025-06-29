@@ -33,7 +33,7 @@ def main():
             vSq = vx**2 + vy**2 + vz**2
             vSq_mean = np.mean(vSq)
             vSq_t = np.hstack((vSq_t, vSq_mean))
-            print(vSq_mean)
+            print(vSq_mean / vSq_t[0])
             vSq = vSq[:, :, N // 2]  # tavSq a slice
             if row_vSq.size == 0:
                 row_vSq = vSq
@@ -68,7 +68,7 @@ def main():
 
     # plot vSq as function of time (top right)
     ax2 = fig.add_subplot(gs[0, 1])
-    ax2.plot(vSq_t)
+    ax2.plot(vSq_t / vSq_t[0])
     ax2.set_xlim(0, 100)
     ax2.set_xlabel("checkpoint")
     ax2.set_ylabel(r"$v^2$")
