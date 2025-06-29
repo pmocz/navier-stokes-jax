@@ -17,6 +17,6 @@ module load python
 
 export PYTHONUNBUFFERED=TRUE
 
-source $VENVDIR/my-jax-venv/bin/activate
+source $VENVDIR/navier-stokes-jax-venv/bin/activate
 
 srun python navier-stokes-jax.py
