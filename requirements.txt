@@ -1,6 +1,6 @@
 jax[cuda12]
 chex
-optax
+optax>=0.2.4
 orbax
 orbax-checkpoint
 numpy
