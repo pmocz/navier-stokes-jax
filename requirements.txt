@@ -1,7 +1,7 @@
-jax[cuda12]
-chex
+jax[cuda12]==0.4.37
+chex>=0.1.89
 optax>=0.2.4
-orbax
-orbax-checkpoint
+orbax>=0.1.9
+orbax-checkpoint>=0.11.10
 numpy
 matplotlib
