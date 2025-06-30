@@ -1,4 +1,4 @@
-jax[cuda12]==0.4.37
+jax[cuda12]
 chex>=0.1.89
 optax>=0.2.4
 orbax>=0.1.9
