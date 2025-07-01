@@ -7,6 +7,7 @@ import chex
 from typing import NamedTuple
 import optax
 import os
+import argparse
 import orbax.checkpoint as ocp
 import matplotlib.pyplot as plt
 
@@ -21,7 +22,13 @@ with a Spectral method
 v_t + (v.nabla) v = nu * nabla^2 v + nabla P
 div(v) = 0
 
-TODO: MAKE INTIAL VELOCITY DIVERGENCE FREE!!!
+Example Ways to Run:
+
+1. Run the simulation with default parameters (N=32, optimize=True):
+python navier-stokes-jax.py
+
+2. Run the simulation with a specified grid size (N=64), no optimization:
+python navier-stokes-jax.py --N 64 --no-optimize
 
 """
 
@@ -273,7 +280,16 @@ def main():
     """3D Navier-Stokes Simulation"""
 
     # Simulation parameters
-    N = 32  # XXX # 16  64  # 32 # 64
+    parser = argparse.ArgumentParser(description="3D Navier-Stokes Simulation")
+    parser.add_argument("--N", type=int, default=32, help="Grid size (default: 32)")
+    parser.add_argument(
+        "--optimize",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Flag to perform optimization to maximize kinetic energy boost (default: True)",
+    )
+    args = parser.parse_args()
+    N = args.N
     t_end = 1.0
     dt = 0.001
     nu = 0.001
@@ -325,7 +341,19 @@ def main():
     # Run the simulation
     start_time = time.time()
     state = run_simulation_and_save_checkpoints(
-        vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, "checkpoints_demo"
+        vx,
+        vy,
+        vz,
+        dt,
+        Nt,
+        nu,
+        kx,
+        ky,
+        kz,
+        kSq,
+        kSq_inv,
+        dealias,
+        f"checkpoints{N}_init",
     )
     jax.block_until_ready(state)
     end_time = time.time()
@@ -338,6 +366,11 @@ def main():
 
     if plot_flag:
         make_plot(vx, vy, vz, kx, ky, kz, N, 1.0)
+
+    # If optimization is enabled, perform the optimization to maximize kinetic energy boost
+    if not args.optimize:
+        print("Optimization is disabled. Exiting.")
+        return
 
     # Now, carry out the optimization to maximize kinetic energy boost
     print("Starting optimization to maximize kinetic energy boost...")
@@ -367,7 +400,7 @@ def main():
     vz -= jnp.mean(vz)
     ke_init = get_ke(vx, vy, vz, dx**3)
     vx, vy, vz = run_simulation_and_save_checkpoints(
-        vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, "checkpoints"
+        vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias, f"checkpoints{N}"
     )
     ke_final = get_ke(vx, vy, vz, dx**3)
     ke_boost = ke_final / ke_init

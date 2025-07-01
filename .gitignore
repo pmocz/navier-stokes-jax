@@ -1,4 +1,3 @@
 .DS_Store
-checkpoints_demo/
-checkpoints/
+checkpoint*
 slurm-*
