@@ -22,7 +22,7 @@ with a Spectral method
 v_t + (v.nabla) v = nu * nabla^2 v + nabla P
 div(v) = 0
 
-Example Ways to Run:
+Example Usage:
 
 1. Run the simulation with default parameters (N=32, optimize=True):
 python navier-stokes-jax.py
@@ -158,7 +158,6 @@ def run_simulation_and_save_checkpoints(
         )
         state = vx, vy, vz
         async_checkpoint_manager.save(checkpoint_id, args=ocp.args.StandardSave(state))
-
         async_checkpoint_manager.wait_until_finished()
         checkpoint_id += 1
 
@@ -246,7 +245,7 @@ def maximize_ke_boost(Ax, Ay, Az, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias,
         f"Initial value: {-loss_function(init_params):.2e} "
         f"Initial gradient norm: {optax.tree_utils.tree_l2_norm(jax.grad(loss_function)(init_params)):.2e}"
     )
-    max_iter = 10  # XXX 100
+    max_iter = 15  # XXX 100
     final_params, _ = run_opt(
         init_params, loss_function, opt, max_iter=max_iter, tol=1e-3
     )

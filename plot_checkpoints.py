@@ -15,6 +15,8 @@ Flatiron Institute
 
 Example Usage:
 
+python plot_checkpoints.py --path=checkpoints32
+
 python plot_checkpoints.py --path=checkpoints64_init
 
 """
@@ -24,7 +26,7 @@ parser.add_argument(
     "--path",
     type=str,
     default="checkpoints32_init",
-    help="Path to the checkpoint directory (default: checkpoints32_checkpoints32_init)",
+    help="Path to the checkpoint directory (default: checkpoints32_init)",
 )
 args = parser.parse_args()
 
@@ -128,7 +130,7 @@ def main():
     plt.tight_layout()
     plt.show()
 
-    # Now, plot wz for each snapshot, in a loop
+    # Now, plot wz for each snapshot, as an animation
     N = vz.shape[0]
     L = 1.0
     klin = 2.0 * np.pi / L * np.arange(-N / 2, N / 2)
