@@ -1,10 +1,10 @@
-import orbax.checkpoint as ocp
 import numpy as np
 from scipy import fft
+import orbax.checkpoint as ocp
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-import os
 from matplotlib import gridspec
+import os
 import argparse
 
 """
@@ -75,10 +75,10 @@ def main():
             snap_num = i * grid_j + j
             restored = async_checkpoint_manager.restore(snap_num)
             vx, vy, vz = restored
+            vx_all[snap_num] = np.array(vx)
+            vy_all[snap_num] = np.array(vy)
+            vz_all[snap_num] = np.array(vz)
             N = vz.shape[0]
-            vx_all[snap_num] = vx
-            vy_all[snap_num] = vy
-            vz_all[snap_num] = vz
             vSq = vx**2 + vy**2 + vz**2
             vSq_mean = np.mean(vSq)
             timeseries_vSq = np.hstack((timeseries_vSq, vSq_mean))
@@ -181,7 +181,7 @@ def main():
         writer="ffmpeg",
         fps=10,
         dpi=80,
-        savefig_kwargs={"bbox_inches": "tight", "pad_inches": 0},
+        savefig_kwargs={"pad_inches": 0},
     )
     if args.show:
         plt.show()

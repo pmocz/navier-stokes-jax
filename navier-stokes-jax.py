@@ -1,5 +1,4 @@
 import jax
-import time
 import jax.numpy as jnp
 import jax.numpy.fft as jfft
 from functools import partial
@@ -8,6 +7,7 @@ from typing import NamedTuple
 import optax
 import os
 import argparse
+import time
 import orbax.checkpoint as ocp
 import matplotlib.pyplot as plt
 
