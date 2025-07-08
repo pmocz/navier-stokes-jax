@@ -19,3 +19,4 @@ export PYTHONUNBUFFERED=TRUE
 source $VENVDIR/navier-stokes-jax-venv/bin/activate
 
 srun python navier-stokes-jax.py --res 64 --max_iter 100
+srun python plot_checkpoints.py --path checkpoints64
