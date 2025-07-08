@@ -278,6 +278,8 @@ def make_plot(vx, vy, vz, kx, ky, kz, N, max_plot_val):
 def main():
     """3D Navier-Stokes Simulation"""
 
+    print(jax.devices())
+
     # Simulation parameters
     parser = argparse.ArgumentParser(description="3D Navier-Stokes Simulation")
     parser.add_argument("--N", type=int, default=32, help="Grid size (default: 32)")
