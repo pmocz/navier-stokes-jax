@@ -16,3 +16,23 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+
+## Run Locally
+
+```console
+python navier-stokes-jax.py
+```
+
+
+## Submit job (Rusty)
+
+```console
+sbatch sbatch_rusty.sh
+```
+
+## Plot results
+
+```console
+python plot_checkpoints.p
+```
+

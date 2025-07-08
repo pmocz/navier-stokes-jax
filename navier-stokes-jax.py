@@ -24,11 +24,11 @@ div(v) = 0
 
 Example Usage:
 
-1. Run the simulation with default parameters (N=32, optimize=True):
+1. Run the simulation with default parameters (res=32, optimize=True):
 python navier-stokes-jax.py
 
-2. Run the simulation with a specified grid size (N=64), no optimization:
-python navier-stokes-jax.py --N 64 --no-optimize
+2. Run the simulation with a specified grid size (res=64), no optimization:
+python navier-stokes-jax.py --res 64 --no-optimize
 
 """
 
@@ -245,7 +245,7 @@ def maximize_ke_boost(Ax, Ay, Az, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias,
         f"Initial value: {-loss_function(init_params):.2e} "
         f"Initial gradient norm: {optax.tree_utils.tree_norm(jax.grad(loss_function)(init_params)):.2e}"
     )
-    max_iter = 15  # XXX 100
+    max_iter = args.max_iter
     final_params, _ = run_opt(
         init_params, loss_function, opt, max_iter=max_iter, tol=1e-3
     )
@@ -282,7 +282,10 @@ def main():
 
     # Simulation parameters
     parser = argparse.ArgumentParser(description="3D Navier-Stokes Simulation")
-    parser.add_argument("--N", type=int, default=32, help="Grid size (default: 32)")
+    parser.add_argument("--res", type=int, default=32, help="Grid size (default: 32)")
+    parser.add_argument(
+        "--max_iter", type=int, default=10, help="Max iterations (default: 10)"
+    )
     parser.add_argument(
         "--optimize",
         action=argparse.BooleanOptionalAction,
@@ -290,7 +293,7 @@ def main():
         help="Flag to perform optimization to maximize kinetic energy boost (default: True)",
     )
     args = parser.parse_args()
-    N = args.N
+    N = args.res
     t_end = 1.0
     dt = 0.001
     nu = 0.001

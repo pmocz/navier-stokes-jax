@@ -18,4 +18,4 @@ export PYTHONUNBUFFERED=TRUE
 
 source $VENVDIR/navier-stokes-jax-venv/bin/activate
 
-srun python navier-stokes-jax.py
+srun python navier-stokes-jax.py --res 64 --max_iter 100
