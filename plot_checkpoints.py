@@ -15,7 +15,7 @@ Flatiron Institute
 
 Example Usage:
 
-python plot_checkpoints.py --path=checkpoints32
+python plot_checkpoints.py --path=checkpoints32 --show
 
 python plot_checkpoints.py --path=checkpoints64_init
 
@@ -27,6 +27,11 @@ parser.add_argument(
     type=str,
     default="checkpoints32_init",
     help="Path to the checkpoint directory (default: checkpoints32_init)",
+)
+parser.add_argument(
+    "--show",
+    action="store_true",
+    help="Show plots and animations interactively (default: False)",
 )
 args = parser.parse_args()
 
@@ -128,7 +133,11 @@ def main():
     ax3.get_yaxis().set_visible(False)
 
     plt.tight_layout()
-    plt.show()
+    plt.savefig(os.path.join(path, "checkpoints_plot.png"))
+    if args.show:
+        plt.show()
+    else:
+        plt.close(fig)
 
     # Now, plot wz for each snapshot, as an animation
     N = vz.shape[0]
@@ -165,7 +174,11 @@ def main():
     ani = animation.FuncAnimation(
         fig, update, frames=snap_total, interval=100, blit=True, repeat=True
     )
-    plt.show()
+    ani.save(os.path.join(path, "checkpoints_animation.mp4"), writer="ffmpeg", fps=10)
+    if args.show:
+        plt.show()
+    else:
+        plt.close(fig)
 
 
 if __name__ == "__main__":

@@ -33,6 +33,6 @@ sbatch sbatch_rusty.sh
 ## Plot results
 
 ```console
-python plot_checkpoints.p
+python plot_checkpoints.py
 ```
 
