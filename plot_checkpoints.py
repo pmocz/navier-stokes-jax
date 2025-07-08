@@ -96,8 +96,7 @@ def main():
         else:
             grid_vSq = np.vstack((grid_vSq, row_vSq))
 
-    # Create a gridspec layout: first subplot (grid_vSq) on the left (half), other two stacked on the right (half)
-
+    # Create a gridspec plot: first subplot (grid_vSq) on the left (half), other two stacked on the right (half)
     fig = plt.figure(figsize=(21, 11), dpi=80)
     gs = gridspec.GridSpec(2, 2, width_ratios=[2, 1])
 
@@ -148,7 +147,7 @@ def main():
     ky = np.fft.ifftshift(ky)
     kz = np.fft.ifftshift(kz)
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(6, 6))
     # Compute global min/max for color scale
     wz_lim = 0.0
     for frame in range(snap_total):
@@ -161,6 +160,9 @@ def main():
     im = ax.imshow(
         np.zeros((N, N)), cmap="bwr", origin="lower", vmin=-wz_lim, vmax=wz_lim
     )
+    ax.set_xticks([])
+    ax.set_yticks([])
+    plt.tight_layout()
 
     def update(frame):
         vx = vx_all[frame]
@@ -174,7 +176,13 @@ def main():
     ani = animation.FuncAnimation(
         fig, update, frames=snap_total, interval=100, blit=True, repeat=True
     )
-    ani.save(os.path.join(path, "checkpoints_animation.mp4"), writer="ffmpeg", fps=10)
+    ani.save(
+        os.path.join(path, "checkpoints_animation.mp4"),
+        writer="ffmpeg",
+        fps=10,
+        dpi=80,
+        savefig_kwargs={"bbox_inches": "tight", "pad_inches": 0},
+    )
     if args.show:
         plt.show()
     else:
