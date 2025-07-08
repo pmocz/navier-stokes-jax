@@ -12,8 +12,7 @@
 #SBATCH --time=00-01:00
 
 module purge
-module load cuda
-module load python
+module load cuda python/3.11
 
 export PYTHONUNBUFFERED=TRUE
 
