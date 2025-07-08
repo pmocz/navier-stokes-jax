@@ -32,6 +32,20 @@ python navier-stokes-jax.py --res 64 --no-optimize
 
 """
 
+# Simulation parameters
+parser = argparse.ArgumentParser(description="3D Navier-Stokes Simulation")
+parser.add_argument("--res", type=int, default=32, help="Grid size (default: 32)")
+parser.add_argument(
+    "--max_iter", type=int, default=10, help="Max iterations (default: 10)"
+)
+parser.add_argument(
+    "--optimize",
+    action=argparse.BooleanOptionalAction,
+    default=True,
+    help="Flag to perform optimization to maximize kinetic energy boost (default: True)",
+)
+args = parser.parse_args()
+
 
 def poisson_solve(rho, kSq_inv):
     """solve the Poisson equation, given source field rho"""
@@ -279,20 +293,6 @@ def main():
     """3D Navier-Stokes Simulation"""
 
     print(jax.devices())
-
-    # Simulation parameters
-    parser = argparse.ArgumentParser(description="3D Navier-Stokes Simulation")
-    parser.add_argument("--res", type=int, default=32, help="Grid size (default: 32)")
-    parser.add_argument(
-        "--max_iter", type=int, default=10, help="Max iterations (default: 10)"
-    )
-    parser.add_argument(
-        "--optimize",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Flag to perform optimization to maximize kinetic energy boost (default: True)",
-    )
-    args = parser.parse_args()
     N = args.res
     t_end = 1.0
     dt = 0.001
