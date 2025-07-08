@@ -180,7 +180,7 @@ def print_info():
             "Iteration: {i}, Boost: {v:.2e}, |grad|: {e:.2e}",
             i=state.iter_num,
             v=-value,
-            e=optax.tree_utils.tree_l2_norm(grad),
+            e=optax.tree_utils.tree_norm(grad),
         )
         return updates, InfoState(iter_num=state.iter_num + 1)
 
@@ -203,7 +203,7 @@ def run_opt(init_params, fun, opt, max_iter, tol):
         _, state = carry
         iter_num = optax.tree_utils.tree_get(state, "count")
         grad = optax.tree_utils.tree_get(state, "grad")
-        err = optax.tree_utils.tree_l2_norm(grad)
+        err = optax.tree_utils.tree_norm(grad)
         return (iter_num == 0) | ((iter_num < max_iter) & (err >= tol))
 
     init_carry = (init_params, opt.init(init_params))
@@ -243,7 +243,7 @@ def maximize_ke_boost(Ax, Ay, Az, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias,
     init_params = (Ax, Ay, Az)
     print(
         f"Initial value: {-loss_function(init_params):.2e} "
-        f"Initial gradient norm: {optax.tree_utils.tree_l2_norm(jax.grad(loss_function)(init_params)):.2e}"
+        f"Initial gradient norm: {optax.tree_utils.tree_norm(jax.grad(loss_function)(init_params)):.2e}"
     )
     max_iter = 15  # XXX 100
     final_params, _ = run_opt(
@@ -251,7 +251,7 @@ def maximize_ke_boost(Ax, Ay, Az, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias,
     )
     print(
         f"Final value: {-loss_function(final_params):.2e}, "
-        f"Final gradient norm: {optax.tree_utils.tree_l2_norm(jax.grad(loss_function)(final_params)):.2e}"
+        f"Final gradient norm: {optax.tree_utils.tree_norm(jax.grad(loss_function)(final_params)):.2e}"
     )
 
     return final_params
