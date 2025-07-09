@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 jax.config.update("jax_enable_x64", True)
 
 """
-Philip Mocz (2025)
+Philip Mocz (2025), @pmocz
 
 Simulate the 3D Navier-Stokes equations (incompressible viscous fluid) 
 with a Spectral method
@@ -32,7 +32,7 @@ python navier-stokes-jax.py --res 64 --no-optimize
 
 """
 
-# Simulation parameters
+# Setup parameters (user-controlled)
 parser = argparse.ArgumentParser(description="3D Navier-Stokes Simulation")
 parser.add_argument("--res", type=int, default=32, help="Grid size (default: 32)")
 parser.add_argument(
@@ -142,7 +142,7 @@ def run_simulation(vx, vy, vz, dt, Nt, nu, kx, ky, kz, kSq, kSq_inv, dealias):
         vy -= dt * dPy
         vz -= dt * dPz
 
-        # Diffusion solve (implicit)
+        # Diffusion solve
         vx = diffusion_solve(vx, dt, nu, kSq)
         vy = diffusion_solve(vy, dt, nu, kSq)
         vz = diffusion_solve(vz, dt, nu, kSq)

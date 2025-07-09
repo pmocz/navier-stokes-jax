@@ -8,10 +8,9 @@ import os
 import argparse
 
 """
-Plot checkpointed data.
-
 Philip Mocz (2025), @pmocz
-Flatiron Institute
+
+Plot checkpointed data.
 
 Example Usage:
 
@@ -72,12 +71,12 @@ def main():
         row_vSq = np.array([])
         for j in range(grid_j):
             # Load the checkpoint
-            snap_num = i * grid_j + j
-            restored = async_checkpoint_manager.restore(snap_num)
+            snap_id = i * grid_j + j
+            restored = async_checkpoint_manager.restore(snap_id)
             vx, vy, vz = restored
-            vx_all[snap_num] = np.array(vx)
-            vy_all[snap_num] = np.array(vy)
-            vz_all[snap_num] = np.array(vz)
+            vx_all[snap_id] = np.array(vx)
+            vy_all[snap_id] = np.array(vy)
+            vz_all[snap_id] = np.array(vz)
             N = vz.shape[0]
             vSq = vx**2 + vy**2 + vz**2
             vSq_mean = np.mean(vSq)
