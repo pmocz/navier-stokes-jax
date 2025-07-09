@@ -19,7 +19,7 @@ Philip Mocz (2025), @pmocz
 Simulate the 3D Navier-Stokes equations (incompressible viscous fluid) 
 with a Spectral method
 
-v_t + (v.nabla) v = nu * nabla^2 v + nabla P
+v_t + (v.nabla) v = nu * nabla^2 v - nabla P
 div(v) = 0
 
 Example Usage:
